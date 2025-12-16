@@ -6,29 +6,57 @@ This is a Go implementation of an MCP (Model Context Protocol) server for `dfc`.
 
 ## Features
 
-- Full MCP protocol implementation
-- Converts Dockerfiles to use Chainguard Images
-- Analyzes Dockerfile structures
-- Healthcheck endpoint for diagnostics
-- Optimizes FROM and RUN lines
+- Full MCP protocol implementation with tools and resources
+- Converts Dockerfiles to use Chainguard Images and Wolfi APKs
+- Builds Dockerfiles and reports success/failure with detailed output
+- Inspects container images for packages, binaries, and configuration
+- Searches Wolfi packages with fuzzy matching
+- Searches Chainguard images by name or alias with optional tag recommendations
+- Lists available Chainguard organizations
+- Provides guided workflow instructions for AI assistants
 - Configurable organization and registry
 
 ## Tools
 
 This MCP server provides the following tools:
 
-1. `convert_dockerfile` - Converts a Dockerfile to use Chainguard Images and APKs
-2. `analyze_dockerfile` - Analyzes a Dockerfile and provides information about its structure
-3. `healthcheck` - Checks if the server is running correctly
+### Dockerfile Conversion
+- `convert_dockerfile` - Converts a Dockerfile to use Chainguard Images and APKs
+- `analyze_dockerfile` - Analyzes a Dockerfile and provides information about its structure
+- `build_dockerfile` - Builds a Dockerfile and returns success/failure status with output
+
+### Image Inspection
+- `get_image_info` - Get comprehensive container image information: packages, binaries, and config (entrypoint, cmd, user, workdir, env)
+
+### Package Search
+- `search_wolfi_packages` - Search for Wolfi packages by name with fuzzy matching
+
+### Chainguard Registry
+- `search_chainguard_images` - Search for Chainguard images by mapped name or direct name, optionally including recommended tags
+- `get_chainguard_image_tags` - Get available tags for a Chainguard image
+
+### Diagnostics
+- `healthcheck` - Checks if the server is running correctly
+
+## Resources
+
+The MCP server also provides the following resources:
+
+- `chainguard://organizations` - List Chainguard organizations the user has access to (returns org names and IDs)
+- `wolfi://package/{name}` - Get metadata for a Wolfi package by name (resource template)
 
 ## Directory Structure
 
 ```
-├── main.go           # Main MCP server implementation
+├── main.go           # Main MCP server implementation and tool handlers
+├── apkindex.go       # Wolfi APKINDEX parsing and package search
+├── chainguard.go     # Chainguard image search and organization listing
+├── crane.go          # Container image tag fetching via crane
+├── docker.go         # Dockerfile building functionality
+├── syft.go           # Image inspection using syft (packages, binaries, config)
 ├── go.mod/go.sum     # Go module dependencies
 ├── Dockerfile        # Container definition
 ├── README.md         # Documentation
-├── mcp-server        # Built binary
 ```
 
 ## Prerequisites
@@ -150,9 +178,14 @@ For other MCP clients or custom implementations, you'll need:
 1. The path to the built `mcp-server` executable
 2. Configuration for stdio transport
 3. Tool names to invoke:
-   - `convert_dockerfile`
-   - `analyze_dockerfile`
-   - `healthcheck`
+   - `convert_dockerfile` - Convert Dockerfiles to Chainguard
+   - `analyze_dockerfile` - Analyze Dockerfile structure
+   - `build_dockerfile` - Build and test Dockerfiles
+   - `get_image_info` - Inspect container images
+   - `search_wolfi_packages` - Find Wolfi packages
+   - `search_chainguard_images` - Search Chainguard registry
+   - `get_chainguard_image_tags` - Get image tags
+   - `healthcheck` - Server health check
 
 General configuration format for most MCP clients:
 
@@ -203,6 +236,108 @@ Example request:
   "name": "analyze_dockerfile",
   "arguments": {
     "dockerfile_content": "FROM alpine\nRUN apk add --no-cache curl"
+  }
+}
+```
+
+### Build a Dockerfile
+
+To build a Dockerfile and get the result:
+
+- `dockerfile_path` (required) - The path to the Dockerfile to build
+- `tail_lines` (optional) - Number of output lines to return on failure (default 50)
+
+Example request:
+
+```json
+{
+  "name": "build_dockerfile",
+  "arguments": {
+    "dockerfile_path": "/path/to/Dockerfile",
+    "tail_lines": 100
+  }
+}
+```
+
+### Get Image Info
+
+To get comprehensive information about a container image:
+
+- `image` (required) - Container image reference (e.g., 'nginx:latest', 'cgr.dev/chainguard/python:latest')
+
+Example request:
+
+```json
+{
+  "name": "get_image_info",
+  "arguments": {
+    "image": "cgr.dev/chainguard/python:latest-dev"
+  }
+}
+```
+
+Returns packages, binaries, entrypoint, cmd, user, workdir, and environment variables.
+
+### Search Wolfi Packages
+
+To search for Wolfi packages:
+
+- `query` (required) - Search term to find packages
+- `limit` (optional) - Maximum number of results (default 10)
+- `search_description` (optional) - Also search in package descriptions (default false)
+
+Example request:
+
+```json
+{
+  "name": "search_wolfi_packages",
+  "arguments": {
+    "query": "python",
+    "limit": 5
+  }
+}
+```
+
+### Search Chainguard Images
+
+To search for Chainguard images:
+
+- `organization` (required) - Chainguard organization name
+- `query` (required) - Search term to find images
+- `search_type` (required) - 'mapped' (search by alias) or 'chainguard' (search by image name)
+- `limit` (optional) - Maximum number of results (default 10)
+- `include_tags` (optional) - Include recommended tags (default false, slower)
+- `max_tags` (optional) - Maximum tags per image (default 10)
+
+Example request:
+
+```json
+{
+  "name": "search_chainguard_images",
+  "arguments": {
+    "organization": "mycorp",
+    "query": "python",
+    "search_type": "mapped",
+    "include_tags": true
+  }
+}
+```
+
+### Get Chainguard Image Tags
+
+To get available tags for a Chainguard image:
+
+- `organization` (required) - Chainguard organization name
+- `image` (required) - Chainguard image name
+
+Example request:
+
+```json
+{
+  "name": "get_chainguard_image_tags",
+  "arguments": {
+    "organization": "mycorp",
+    "image": "python"
   }
 }
 ```
